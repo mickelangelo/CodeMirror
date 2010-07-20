@@ -50,6 +50,10 @@ var JSParser = Editor.Parser = (function() {
     };
   }
 
+  function trace() {
+    console.log.apply(console,arguments);
+  }
+  
   // The parser-iterator-producing function itself.
   function parseJS(input, basecolumn) {
     // Wrap the input in a token stream
@@ -98,6 +102,7 @@ var JSParser = Editor.Parser = (function() {
         // the end of the line, it is an un-aligned scope.
         if (!("align" in lexical))
           lexical.align = false;
+        trace("un-aligned");
         // Newline tokens get an indentation function associated with
         // them.
         token.indentation = indentJS(lexical);
@@ -199,6 +204,7 @@ var JSParser = Editor.Parser = (function() {
     // Push a new lexical context of the given type.
     function pushlex(type, info) {
       var result = function(){
+        trace("pushlex",type,info);
         lexical = new JSLexical(indented, column, type, null, lexical, info)
       };
       result.lex = true;
@@ -206,6 +212,7 @@ var JSParser = Editor.Parser = (function() {
     }
     // Pop off the current lexical context.
     function poplex(){
+      trace("poplex",lexical.prev.type,lexical.prev.info);
       lexical = lexical.prev;
     }
     poplex.lex = true;
@@ -232,6 +239,7 @@ var JSParser = Editor.Parser = (function() {
     // Dispatches various types of statements based on the type of the
     // current token.
     function statement(type){
+      trace("stmt",type);
       if (type == "var") cont(pushlex("vardef"), vardef1, expect(";"), poplex);
       else if (type == "keyword a") cont(pushlex("form"), expression, statement, poplex);
       else if (type == "keyword b") cont(pushlex("form"), statement, poplex);
@@ -243,13 +251,15 @@ var JSParser = Editor.Parser = (function() {
       else if (type == "case") cont(expression, expect(":"));
       else if (type == "default") cont(expect(":"));
       else if (type == "catch") cont(pushlex("form"), pushcontext, expect("("), funarg, expect(")"), statement, poplex, popcontext);
+      else if (type == ";") cont();
       else pass(pushlex("stat"), expression, expect(";"), poplex);
     }
     // Dispatch expression types.
     function expression(type){
+      trace("expr",type);
       if (atomicTypes.hasOwnProperty(type)) cont(maybeoperator);
       else if (type == "function") cont(functiondef);
-      else if (type == "keyword c") cont(expression);
+      else if (type == "keyword c") cont(maybeexpression);
       else if (type == "(") cont(pushlex(")"), expression, expect(")"), poplex, maybeoperator);
       else if (type == "operator") cont(expression);
       else if (type == "[") cont(pushlex("]"), commasep(expression, "]"), poplex, maybeoperator);
@@ -260,10 +270,21 @@ var JSParser = Editor.Parser = (function() {
     // subscripts are valid. Will skip on to the next action if none
     // is found.
     function maybeoperator(type){
+      trace("maybe_op",type);
+    
       if (type == "operator") cont(expression);
       else if (type == "(") cont(pushlex(")"), commasep(expression, ")"), poplex, maybeoperator);
       else if (type == ".") cont(property, maybeoperator);
       else if (type == "[") cont(pushlex("]"), expression, expect("]"), poplex, maybeoperator);
+    }
+    // Called for keywords like return which can have an empty expression.
+    function maybeexpression(type){
+        trace("maybe_expr",type);
+        if(type != ";") {
+            pass(expression);
+        } else {
+            pass();
+        }
     }
     // When a statement starts with a variable name, it might be a
     // label. If no colon follows, it's a regular statement.
@@ -285,17 +306,20 @@ var JSParser = Editor.Parser = (function() {
     // by the 'what' argument.
     function commasep(what, end){
       function proceed(type) {
+        trace("csep_proceed",type,end);
         if (type == ",") cont(what, proceed);
         else if (type == end) cont();
         else cont(expect(end));
       }
       return function commaSeparated(type) {
+        trace("csep",type,end);
         if (type == end) cont();
         else pass(what, proceed);
       };
     }
     // Look for statements until a closing brace is found.
     function block(type){
+      trace("block",type);
       if (type == "}") cont();
       else pass(statement, block);
     }
